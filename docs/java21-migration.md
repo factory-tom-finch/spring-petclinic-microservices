@@ -35,6 +35,15 @@ count of ten was inaccurate. Also check real seeded-database startup, routes,
 UI/WebJar assets, fallback behavior, tracing, and any module-specific configuration.
 Unit/slice tests alone do not establish runtime compatibility.
 
+CI also runs `scripts/verify_mysql.py` against a fresh MySQL 5.7.44 service,
+using read-only external configuration pinned to commit
+`323993ce2519c6d02df63e08bf4458d123d3b611`. It starts customers, visits and vets
+serially against one database and checks their original MySQL seeds. Customers
+must initialize first because visits references `pets`. SQL initialization stays
+strict. This is observed compatibility, not official vendor support for MySQL 5.7.
+The pre-existing MySQL 8.0 `GRANT ... IDENTIFIED BY` failure remains a follow-up;
+no SQL, driver or dialect change is included.
+
 ## Containers
 
 The shared Dockerfile uses Java 21 and the Boot 3 packaging plugin's `tools`

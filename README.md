@@ -82,6 +82,18 @@ In its default configuration, Petclinic uses an in-memory database (HSQLDB) whic
 A similar setup is provided for MySql in case a persistent database configuration is needed.
 Dependency for Connector/J, the MySQL JDBC driver is already included in the `pom.xml` files.
 
+The unchanged `mysql` profile is verified in CI on MySQL **5.7.44**, starting
+customers before visits because visits references the customers `pets` table.
+This works with the managed dependencies, but MySQL 5.7 is outside the official
+MySQL 8.0+ support range of Hibernate 6.6 and Connector/J 9. No driver or dialect
+override is applied.
+
+MySQL 8.0 automatic initialization currently fails on the pre-existing
+`GRANT ... IDENTIFIED BY` statements in all three MySQL schema scripts. Those
+account-provisioning statements need a separate follow-up before that path can
+work on MySQL 8.0. The migration deliberately leaves SQL and seed data unchanged
+and does not ignore initialization errors.
+
 ### Start a MySql database
 
 You may start a MySql database with docker:
@@ -93,12 +105,14 @@ or download and install the MySQL database (e.g., MySQL Community Server 5.7 GA)
 
 ### Use the Spring 'mysql' profile
 
-To use a MySQL database, you have to start 3 microservices (`visits-service`, `customers-service` and `vets-services`)
-with the `mysql` Spring profile. Add the `--spring.profiles.active=mysql` as programm argument.
+To use a MySQL database, start `customers-service`, then `visits-service` and
+`vets-service`, with the `mysql` Spring profile. Add
+`--spring.profiles.active=mysql` as a program argument.
 
 By default, at startup, database schema will be created and data will be populated.
 You may also manually create the PetClinic database and data by executing the `"db/mysql/{schema,data}.sql"` scripts of each 3 microservices. 
-In the `application.yml` of the [Configuration repository], set the `initialization-mode` to `never`.
+For a pre-provisioned database, use `--spring.sql.init.mode=never` as a local
+override. The external configuration repository is not changed by this migration.
 
 If you are running the microservices with Docker, you have to add the `mysql` profile into the (Dockerfile)[docker/Dockerfile]:
 ```

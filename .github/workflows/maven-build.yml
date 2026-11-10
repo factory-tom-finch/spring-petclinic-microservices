@@ -45,3 +45,39 @@ jobs:
         path: .
     - name: Verify Java 21 images and Compose launchers
       run: sh scripts/verify_containers.sh
+
+  mysql57:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mysql:
+        image: mysql:5.7.44
+        env:
+          MYSQL_ROOT_PASSWORD: petclinic
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: petclinic
+        ports: [ '3306:3306' ]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        path: source
+    - uses: actions/checkout@v4
+      with:
+        repository: spring-petclinic/spring-petclinic-microservices-config
+        ref: 323993ce2519c6d02df63e08bf4458d123d3b611
+        path: external-config
+        persist-credentials: false
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: temurin
+    - uses: actions/download-artifact@v4
+      with:
+        name: service-jars
+        path: source
+    - name: Verify strict MySQL profile, customers before visits
+      run: python3 source/scripts/verify_mysql.py external-config
