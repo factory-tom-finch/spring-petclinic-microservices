@@ -2,9 +2,9 @@ package org.springframework.samples.petclinic.vets;
 
 import javax.cache.Cache;
 import javax.cache.CacheManager;
-import javax.persistence.EntityManagerFactory;
-import javax.validation.Validator;
-import javax.xml.bind.annotation.XmlElement;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.validation.Validator;
+import jakarta.xml.bind.annotation.XmlElement;
 
 import org.ehcache.jsr107.EhcacheCachingProvider;
 import org.hibernate.SessionFactory;
@@ -30,8 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "vets.cache.heap-size=13",
     "spring.jpa.properties.hibernate.generate_statistics=true",
     "management.endpoints.web.exposure.include=health,prometheus,jolokia,loggers",
-    "management.metrics.export.prometheus.enabled=true",
-    "spring.zipkin.enabled=false"
+    "management.prometheus.metrics.export.enabled=true"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles({"test", "production"})
