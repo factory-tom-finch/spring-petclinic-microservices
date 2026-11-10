@@ -45,7 +45,7 @@ public class ApiGatewayController {
 
     private final ReactiveCircuitBreakerFactory cbFactory;
 
-    @GetMapping(value = "owners/{ownerId}")
+    @GetMapping(value = {"owners/{ownerId}", "owners/{ownerId}/"})
     public Mono<OwnerDetails> getOwnerDetails(final @PathVariable int ownerId) {
         return customersServiceClient.getOwner(ownerId)
             .flatMap(owner ->
