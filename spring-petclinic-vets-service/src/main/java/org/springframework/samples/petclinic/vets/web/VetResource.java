@@ -39,7 +39,7 @@ class VetResource {
 
     private final VetRepository vetRepository;
 
-    @GetMapping
+    @GetMapping({"", "/"})
     public List<Vet> showResourcesVetList() {
         return vetRepository.findAll();
     }

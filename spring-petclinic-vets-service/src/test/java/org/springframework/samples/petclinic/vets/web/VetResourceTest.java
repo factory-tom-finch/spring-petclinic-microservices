@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.samples.petclinic.vets.model.Specialty;
 import org.springframework.samples.petclinic.vets.model.Vet;
 import org.springframework.samples.petclinic.vets.model.VetRepository;
 import org.springframework.test.context.ActiveProfiles;
@@ -29,7 +30,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static java.util.Arrays.asList;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,5 +62,45 @@ class VetResourceTest {
         mvc.perform(get("/vets").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].id").value(1));
+    }
+
+    @Test
+    void shouldPreserveSortedSpecialtiesAndTrailingSlash() throws Exception {
+        Vet vet = new Vet();
+        vet.setId(3);
+        vet.setFirstName("Linda");
+        vet.setLastName("Douglas");
+        Specialty surgery = new Specialty();
+        surgery.setName("surgery");
+        Specialty dentistry = new Specialty();
+        dentistry.setName("dentistry");
+        vet.addSpecialty(surgery);
+        vet.addSpecialty(dentistry);
+        given(vetRepository.findAll()).willReturn(asList(vet));
+
+        for (String path : asList("/vets", "/vets/")) {
+            mvc.perform(get(path).accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$[0].id").value(3))
+                .andExpect(jsonPath("$[0].firstName").value("Linda"))
+                .andExpect(jsonPath("$[0].lastName").value("Douglas"))
+                .andExpect(jsonPath("$[0].specialties[0].name").value("dentistry"))
+                .andExpect(jsonPath("$[0].specialties[1].name").value("surgery"))
+                .andExpect(jsonPath("$[0].nrOfSpecialties").value(2));
+        }
+        verify(vetRepository, times(2)).findAll();
+    }
+
+    @Test
+    void shouldSerializeAnEmptySpecialtyList() throws Exception {
+        Vet vet = new Vet();
+        vet.setId(1);
+        given(vetRepository.findAll()).willReturn(asList(vet));
+
+        mvc.perform(get("/vets").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].specialties").isEmpty())
+            .andExpect(jsonPath("$[0].nrOfSpecialties").value(0));
     }
 }
