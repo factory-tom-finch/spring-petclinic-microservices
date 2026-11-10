@@ -16,8 +16,6 @@
     </parent>
 
     <properties>
-        <petclinic.boot.version>3.5.16</petclinic.boot.version>
-        <petclinic.cloud.version>2025.0.3</petclinic.cloud.version>
         <spring-boot-admin.version>3.5.11</spring-boot-admin.version>
         <docker.image.exposed.port>9090</docker.image.exposed.port>
         <docker.image.dockerfile.dir>${basedir}/../docker</docker.image.dockerfile.dir>
