@@ -15,12 +15,10 @@ Build every service with JDK 21 and the Maven 3.9.9 wrapper:
 ./mvnw -B verify
 ```
 
-The Java 21 / Spring Boot 3 migration temporarily uses a BOM-only parent build.
-Unchanged modules use Boot 2.7.18 and Cloud 2021.0.9. A migrated module selects
-Boot 3.5.16 and Cloud 2025.0.3 with the two properties documented in
-[the migration guide](docs/java21-migration.md). All modules share Java 21 build
-plugins and executable-jar packaging. The final cleanup restores the Boot 3
-starter parent and removes the temporary compatibility settings.
+All seven services use Spring Boot 3.5.16 and Spring Cloud 2025.0.3, managed
+centrally through the Spring Boot starter parent. Java 21 build plugins and
+executable-jar packaging are shared. See [the migration guide](docs/java21-migration.md)
+for validation, container coverage and external-configuration follow-ups.
 
 Every microservice is a Spring Boot application and can be started locally using IDE ([Lombok](https://projectlombok.org/) plugin has to be set up) or `../mvnw spring-boot:run` command. Please note that supporting services (Config and Discovery Server) must be started before any other application (Customers, Vets, Visits and API).
 Startup of Tracing server, Admin server, Grafana and Prometheus is optional.
