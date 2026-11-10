@@ -101,16 +101,23 @@ class GatewayContractIntegrationTest {
 
     @Test
     void aggregatesOwnersUsingLoadBalancedClients() throws InterruptedException {
-        upstream.enqueue(json("{\"id\":1,\"firstName\":\"George\",\"pets\":[{\"id\":1,\"name\":\"Leo\"}]}"));
-        upstream.enqueue(json("{\"items\":[{\"id\":2,\"petId\":1,\"description\":\"Checkup\"}]}"));
+        upstream.enqueue(json("{\"id\":1,\"firstName\":\"George\",\"pets\":[{\"id\":1,\"name\":\"Leo\"},"
+            + "{\"id\":2,\"name\":\"Basil\"}]}"));
+        upstream.enqueue(json("{\"items\":[{\"id\":2,\"petId\":1,\"description\":\"Checkup\"},"
+            + "{\"id\":3,\"petId\":2,\"description\":\"Vaccination\"},"
+            + "{\"id\":4,\"petId\":99,\"description\":\"Unrelated\"}]}"));
 
         client().get().uri("/api/gateway/owners/1").exchange().expectStatus().isOk()
             .expectBody().jsonPath("$.id").isEqualTo(1)
             .jsonPath("$.pets[0].name").isEqualTo("Leo")
-            .jsonPath("$.pets[0].visits[0].description").isEqualTo("Checkup");
+            .jsonPath("$.pets[0].visits[0].description").isEqualTo("Checkup")
+            .jsonPath("$.pets[0].visits.length()").isEqualTo(1)
+            .jsonPath("$.pets[1].name").isEqualTo("Basil")
+            .jsonPath("$.pets[1].visits[0].description").isEqualTo("Vaccination")
+            .jsonPath("$.pets[1].visits.length()").isEqualTo(1);
 
         assertRequest("GET", "/owners/1", "");
-        assertRequest("GET", "/pets/visits?petId=1", "");
+        assertRequest("GET", "/pets/visits?petId=1%2C2", "");
     }
 
     @Test
@@ -124,6 +131,29 @@ class GatewayContractIntegrationTest {
 
         assertRequest("GET", "/owners/1", "");
         assertRequest("GET", "/pets/visits?petId=1", "");
+    }
+
+    @Test
+    void keepsOwnersWhenTheVisitsServiceReturnsAnHttpError() throws InterruptedException {
+        upstream.enqueue(json("{\"id\":1,\"pets\":[{\"id\":1,\"name\":\"Leo\"}]}"));
+        upstream.enqueue(new MockResponse().setResponseCode(503));
+
+        client().get().uri("/api/gateway/owners/1").exchange().expectStatus().isOk()
+            .expectBody().jsonPath("$.pets[0].name").isEqualTo("Leo")
+            .jsonPath("$.pets[0].visits").isEmpty();
+
+        assertRequest("GET", "/owners/1", "");
+        assertRequest("GET", "/pets/visits?petId=1", "");
+    }
+
+    @Test
+    void doesNotHideCustomerServiceFailuresWithTheVisitsFallback() throws InterruptedException {
+        upstream.enqueue(new MockResponse().setResponseCode(503));
+
+        client().get().uri("/api/gateway/owners/1").exchange().expectStatus().isEqualTo(500);
+
+        assertRequest("GET", "/owners/1", "");
+        assertThat(upstream.takeRequest(100, TimeUnit.MILLISECONDS)).isNull();
     }
 
     @Test
@@ -198,9 +228,9 @@ class GatewayContractIntegrationTest {
 
         client().get().uri("/actuator/prometheus").exchange().expectStatus().isOk()
             .expectBody(String.class).value(body -> assertThat(body)
-                .contains("http_client_requests_seconds_count{",
-                    "spring_cloud_gateway_requests_seconds_count{",
-                    "spring_cloud_gateway_http_client_requests_seconds_count{"));
+                .contains("\nhttp_client_requests_seconds_count{",
+                    "\nspring_cloud_gateway_requests_seconds_count{",
+                    "\nspring_cloud_gateway_http_client_requests_seconds_count{"));
     }
 
     @Test
