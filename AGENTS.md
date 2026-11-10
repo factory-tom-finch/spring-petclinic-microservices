@@ -55,7 +55,7 @@ Expected work, so nothing is missed:
 - Spring Cloud Sleuth (`spring-cloud-starter-sleuth`, `spring-cloud-sleuth-zipkin`) has no Boot 3 version. It must be replaced in customers, vets, visits and api-gateway.
 - Lombok must be on a version that compiles on Java 21.
 - Check `chaos-monkey-spring-boot`, `spring-boot-admin`, `jolokia-core` and the `wro4j-maven-plugin` setup in api-gateway (it has a Java 9+ workaround) for Boot 3 and Java 21 compatibility.
-- Update `docker/Dockerfile` base images and `.github/workflows/maven-build.yml`. CI currently triggers only on `master` and uses JDK 11.
+- Update `docker/Dockerfile` base images and `.github/workflows/maven-build.yml`. CI runs on pushes and PRs to `main` and currently uses JDK 11.
 
 ## Rules for agents
 
