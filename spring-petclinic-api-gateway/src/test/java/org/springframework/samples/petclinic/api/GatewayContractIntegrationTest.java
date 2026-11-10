@@ -1,17 +1,22 @@
 package org.springframework.samples.petclinic.api;
 
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.web.server.LocalServerPort;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -20,14 +25,22 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles("test")
+@AutoConfigureObservability
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"server.address=127.0.0.1", "spring.zipkin.enabled=false"})
+    properties = {"server.address=127.0.0.1", "management.zipkin.tracing.export.enabled=false",
+        "management.endpoints.web.exposure.include=health,loggers,prometheus"})
 class GatewayContractIntegrationTest {
 
     private static final MockWebServer upstream = startServer();
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private Tracer tracer;
 
     @DynamicPropertySource
     static void discovery(DynamicPropertyRegistry properties) {
@@ -65,17 +78,25 @@ class GatewayContractIntegrationTest {
     }
 
     @Test
-    void addsForwardingMetadataForDirectClients() throws InterruptedException {
+    void removesUntrustedForwardingHeadersByDefault() throws InterruptedException {
         upstream.enqueue(json("[]"));
-        client().get().uri("/api/vet/vets").exchange().expectStatus().isOk();
+        client().get().uri("/api/vet/vets")
+            .header("Forwarded", "for=192.0.2.1;host=untrusted.example;proto=https")
+            .header("X-Forwarded-For", "192.0.2.1")
+            .header("X-Forwarded-Host", "untrusted.example")
+            .header("X-Forwarded-Port", "443")
+            .header("X-Forwarded-Proto", "https")
+            .header("X-Forwarded-Prefix", "/untrusted")
+            .exchange().expectStatus().isOk();
 
         RecordedRequest request = takeRequest();
         assertThat(request.getPath()).isEqualTo("/vets");
-        assertThat(request.getHeader("X-Forwarded-Prefix")).isEqualTo("/api/vet");
-        assertThat(request.getHeader("X-Forwarded-Proto")).isEqualTo("http");
-        assertThat(request.getHeader("X-Forwarded-Host")).isEqualTo("127.0.0.1:" + port);
-        assertThat(request.getHeader("X-Forwarded-For")).isEqualTo("127.0.0.1");
-        assertThat(request.getHeader("Forwarded")).contains("proto=http", "host=", "for=");
+        assertThat(request.getHeader("X-Forwarded-Prefix")).isNull();
+        assertThat(request.getHeader("X-Forwarded-Proto")).isNull();
+        assertThat(request.getHeader("X-Forwarded-Host")).isNull();
+        assertThat(request.getHeader("X-Forwarded-Port")).isNull();
+        assertThat(request.getHeader("X-Forwarded-For")).isNull();
+        assertThat(request.getHeader("Forwarded")).isNull();
     }
 
     @Test
@@ -87,6 +108,19 @@ class GatewayContractIntegrationTest {
             .expectBody().jsonPath("$.id").isEqualTo(1)
             .jsonPath("$.pets[0].name").isEqualTo("Leo")
             .jsonPath("$.pets[0].visits[0].description").isEqualTo("Checkup");
+
+        assertRequest("GET", "/owners/1", "");
+        assertRequest("GET", "/pets/visits?petId=1", "");
+    }
+
+    @Test
+    void preservesTheOwnerDetailsTrailingSlashEndpoint() throws InterruptedException {
+        upstream.enqueue(json("{\"id\":1,\"pets\":[{\"id\":1,\"name\":\"Leo\"}]}"));
+        upstream.enqueue(json("{\"items\":[]}"));
+
+        client().get().uri("/api/gateway/owners/1/").exchange().expectStatus().isOk()
+            .expectBody().jsonPath("$.id").isEqualTo(1)
+            .jsonPath("$.pets[0].name").isEqualTo("Leo");
 
         assertRequest("GET", "/owners/1", "");
         assertRequest("GET", "/pets/visits?petId=1", "");
@@ -133,6 +167,40 @@ class GatewayContractIntegrationTest {
     @Test
     void doesNotExposeAServletJolokiaEndpoint() {
         client().get().uri("/actuator/jolokia").exchange().expectStatus().isNotFound();
+    }
+
+    @Test
+    void retainsTracingOnTheLoadBalancedRestTemplate() throws InterruptedException {
+        upstream.enqueue(json("[]"));
+        Span span = tracer.nextSpan().name("rest-template-contract").start();
+        try (Tracer.SpanInScope ignored = tracer.withSpan(span)) {
+            assertThat(restTemplate.getForObject("http://vets-service/vets", String.class)).isEqualTo("[]");
+        } finally {
+            span.end();
+        }
+
+        RecordedRequest request = takeRequest();
+        assertThat(request.getPath()).isEqualTo("/vets");
+        assertThat(request.getHeader("X-B3-TraceId")).isEqualTo(span.context().traceId());
+    }
+
+    @Test
+    void exportsGatewayAndWebClientPrometheusMetricsTogether() throws InterruptedException {
+        upstream.enqueue(json("[]"));
+        client().get().uri("/api/vet/vets").exchange().expectStatus().isOk();
+        assertRequest("GET", "/vets", "");
+
+        upstream.enqueue(json("{\"id\":1,\"pets\":[{\"id\":1}]}"));
+        upstream.enqueue(json("{\"items\":[]}"));
+        client().get().uri("/api/gateway/owners/1").exchange().expectStatus().isOk();
+        assertRequest("GET", "/owners/1", "");
+        assertRequest("GET", "/pets/visits?petId=1", "");
+
+        client().get().uri("/actuator/prometheus").exchange().expectStatus().isOk()
+            .expectBody(String.class).value(body -> assertThat(body)
+                .contains("http_client_requests_seconds_count{",
+                    "spring_cloud_gateway_requests_seconds_count{",
+                    "spring_cloud_gateway_http_client_requests_seconds_count{"));
     }
 
     @Test

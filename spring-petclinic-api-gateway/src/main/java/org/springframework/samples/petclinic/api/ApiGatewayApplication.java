@@ -17,14 +17,20 @@ package org.springframework.samples.petclinic.api;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.web.client.RestTemplateCustomizer;
+import org.springframework.boot.web.reactive.function.client.WebClientCustomizer;
 import org.springframework.cloud.circuitbreaker.resilience4j.ReactiveResilience4JCircuitBreakerFactory;
 import org.springframework.cloud.circuitbreaker.resilience4j.Resilience4JConfigBuilder;
 import org.springframework.cloud.client.circuitbreaker.Customizer;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.cloud.gateway.filter.headers.observation.DefaultGatewayObservationConvention;
+import org.springframework.cloud.gateway.filter.headers.observation.GatewayObservationConvention;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -52,14 +58,32 @@ public class ApiGatewayApplication {
 
     @Bean
     @LoadBalanced
-    RestTemplate loadBalancedRestTemplate() {
-        return new RestTemplate();
+    RestTemplate loadBalancedRestTemplate(RestTemplateBuilder builder) {
+        return builder.build();
+    }
+
+    @Bean
+    RestTemplateBuilder restTemplateBuilder(ObjectProvider<RestTemplateCustomizer> customizers) {
+        return new RestTemplateBuilder().additionalCustomizers(customizers.orderedStream().toList());
     }
 
     @Bean
     @LoadBalanced
-    public WebClient.Builder loadBalancedWebClientBuilder() {
-        return WebClient.builder();
+    public WebClient.Builder loadBalancedWebClientBuilder(ObjectProvider<WebClientCustomizer> customizers) {
+        WebClient.Builder builder = WebClient.builder();
+        customizers.orderedStream().forEach(customizer -> customizer.customize(builder));
+        return builder;
+    }
+
+    @Bean
+    GatewayObservationConvention gatewayObservationConvention() {
+        return new DefaultGatewayObservationConvention() {
+            @Override
+            public String getName() {
+                // Gateway and WebClient observations have incompatible Prometheus tags.
+                return "spring.cloud.gateway.http.client.requests";
+            }
+        };
     }
 
     @Value("classpath:/static/index.html")

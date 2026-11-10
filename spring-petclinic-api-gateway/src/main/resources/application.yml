@@ -3,29 +3,39 @@ spring:
     name: api-gateway
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/}
+  reactor:
+    context-propagation: auto
   cloud:
     gateway:
-      routes:
-        - id: vets-service
-          uri: lb://vets-service
-          predicates:
-            - Path=/api/vet/**
-          filters:
-            - StripPrefix=2
-        - id: visits-service
-          uri: lb://visits-service
-          predicates:
-            - Path=/api/visit/**
-          filters:
-            - StripPrefix=2
-        - id: customers-service
-          uri: lb://customers-service
-          predicates:
-            - Path=/api/customer/**
-          filters:
-            - StripPrefix=2
+      server:
+        webflux:
+          routes:
+            - id: vets-service
+              uri: lb://vets-service
+              predicates:
+                - Path=/api/vet/**
+              filters:
+                - StripPrefix=2
+            - id: visits-service
+              uri: lb://visits-service
+              predicates:
+                - Path=/api/visit/**
+              filters:
+                - StripPrefix=2
+            - id: customers-service
+              uri: lb://customers-service
+              predicates:
+                - Path=/api/customer/**
+              filters:
+                - StripPrefix=2
 
-
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      consume: B3,B3_MULTI,W3C
+      produce: B3_MULTI
 
 ---
 spring:
@@ -33,3 +43,7 @@ spring:
     activate:
       on-profile: docker
     import: configserver:http://config-server:8888
+management:
+  zipkin:
+    tracing:
+      endpoint: http://tracing-server:9411/api/v2/spans
