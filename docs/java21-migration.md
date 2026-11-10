@@ -1,32 +1,23 @@
 # Java 21 / Spring Boot 3 migration
 
-## Temporary parent bridge
+## Platform
 
-The user approved a temporary exception to the parent-first rule: the foundational
-parent build uses Boot and Cloud BOMs instead of inheriting the Boot starter parent
-while application modules migrate in separate PRs. The final cleanup PR must
-restore `spring-boot-starter-parent:3.5.16` and remove the bridge.
+All seven modules inherit `spring-boot-starter-parent:3.5.16` through the root
+parent and use Spring Cloud 2025.0.3. The temporary dual-platform BOM bridge
+was removed after the service migrations.
 
-All modules compile for Java 21. The wrapper runs Maven 3.9.9. Shared build plugins
-use the Boot 3 packaging format, even when an application still uses the legacy
-Boot 2 runtime. Unchanged modules select Boot 2.7.18 / Cloud 2021.0.9 by default.
+All modules compile for Java 21. The wrapper runs Maven 3.9.9. Shared plugin
+versions and executable-jar packaging come from the Boot starter parent.
+Chaos Monkey 3.3.0 is managed centrally. The project-parent coordinate remains
+`2.6.7`; it is not the Spring Boot dependency version.
 
-A module migrating to the final platform adds these properties in its own POM:
+Do not add module-local Boot/Cloud BOM imports or platform selector properties.
+The legacy MySQL coordinate and the temporary global Mockito version pin are
+no longer managed by the root. Keep any necessary isolated plugin dependencies
+separate from application runtime and test dependency management.
 
-```xml
-<petclinic.boot.version>3.5.16</petclinic.boot.version>
-<petclinic.cloud.version>2025.0.3</petclinic.cloud.version>
-```
-
-No local BOM imports or changes to the project-parent coordinate `2.6.7` are
-needed. Business modules must also select compatible Chaos Monkey 3.3.0 while
-upgrading their own dependencies; the temporary shared default remains 2.3.10
-for unchanged services. The old MySQL coordinate is temporarily managed at its
-original version 8.0.28 until the three database services change coordinates.
-Do not override dependency versions just to suppress a mixed-platform graph.
-
-Trace export remains Zipkin, using Boot-managed Micrometer Brave in migrated
-modules. Preserve existing sampling, propagation and JSON/REST behavior.
+Trace export remains Zipkin, using Boot-managed Micrometer Brave. Preserve
+existing sampling, propagation and JSON/REST behavior.
 
 ## Validation
 
@@ -44,10 +35,19 @@ count of ten was inaccurate. Also check real seeded-database startup, routes,
 UI/WebJar assets, fallback behavior, tracing, and any module-specific configuration.
 Unit/slice tests alone do not establish runtime compatibility.
 
+CI also runs `scripts/verify_mysql.py` against a fresh MySQL 5.7.44 service,
+using read-only external configuration pinned to commit
+`323993ce2519c6d02df63e08bf4458d123d3b611`. It starts customers, visits and vets
+serially against one database and checks their original MySQL seeds. Customers
+must initialize first because visits references `pets`. SQL initialization stays
+strict. This is observed compatibility, not official vendor support for MySQL 5.7.
+The pre-existing MySQL 8.0 `GRANT ... IDENTIFIED BY` failure remains a follow-up;
+no SQL, driver or dialect change is included.
+
 ## Containers
 
 The shared Dockerfile uses Java 21 and the Boot 3 packaging plugin's `tools`
-extraction mode for both legacy and migrated runtime jars. All Compose command
+extraction mode. All Compose command
 overrides use the extracted `application.jar`, avoiding hard-coded loader class
 names. Keep dockerize waits and service ports unchanged.
 

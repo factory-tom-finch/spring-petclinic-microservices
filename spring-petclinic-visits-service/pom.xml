@@ -15,9 +15,6 @@
     </parent>
 
     <properties>
-        <petclinic.boot.version>3.5.16</petclinic.boot.version>
-        <petclinic.cloud.version>2025.0.3</petclinic.cloud.version>
-        <chaos-monkey-spring-boot.version>3.3.0</chaos-monkey-spring-boot.version>
         <docker.exposed.port>8081</docker.exposed.port>
         <docker.image.dockerfile.dir>${basedir}/../docker</docker.image.dockerfile.dir>
     </properties>

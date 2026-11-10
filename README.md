@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 This microservices branch was initially derived from [AngularJS version](https://github.com/spring-petclinic/spring-petclinic-angular1) to demonstrate how to split sample Spring application into [microservices](http://www.martinfowler.com/articles/microservices.html).
-To achieve that goal, we use Spring Cloud Gateway, Spring Cloud Circuit Breaker, Spring Cloud Config, Spring Cloud Sleuth, Resilience4j, Micrometer 
+To achieve that goal, we use Spring Cloud Gateway, Spring Cloud Circuit Breaker, Spring Cloud Config, Micrometer Tracing with Brave and Zipkin, Resilience4j, Micrometer
 and the Eureka Service Discovery from the [Spring Cloud Netflix](https://github.com/spring-cloud/spring-cloud-netflix) technology stack.
 
 ## Starting services locally without Docker
@@ -15,12 +15,10 @@ Build every service with JDK 21 and the Maven 3.9.9 wrapper:
 ./mvnw -B verify
 ```
 
-The Java 21 / Spring Boot 3 migration temporarily uses a BOM-only parent build.
-Unchanged modules use Boot 2.7.18 and Cloud 2021.0.9. A migrated module selects
-Boot 3.5.16 and Cloud 2025.0.3 with the two properties documented in
-[the migration guide](docs/java21-migration.md). All modules share Java 21 build
-plugins and executable-jar packaging. The final cleanup restores the Boot 3
-starter parent and removes the temporary compatibility settings.
+All seven services use Spring Boot 3.5.16 and Spring Cloud 2025.0.3, managed
+centrally through the Spring Boot starter parent. Java 21 build plugins and
+executable-jar packaging are shared. See [the migration guide](docs/java21-migration.md)
+for validation, container coverage and external-configuration follow-ups.
 
 Every microservice is a Spring Boot application and can be started locally using IDE ([Lombok](https://projectlombok.org/) plugin has to be set up) or `../mvnw spring-boot:run` command. Please note that supporting services (Config and Discovery Server) must be started before any other application (Customers, Vets, Visits and API).
 Startup of Tracing server, Admin server, Grafana and Prometheus is optional.
@@ -84,6 +82,18 @@ In its default configuration, Petclinic uses an in-memory database (HSQLDB) whic
 A similar setup is provided for MySql in case a persistent database configuration is needed.
 Dependency for Connector/J, the MySQL JDBC driver is already included in the `pom.xml` files.
 
+The unchanged `mysql` profile is verified in CI on MySQL **5.7.44**, starting
+customers before visits because visits references the customers `pets` table.
+This works with the managed dependencies, but MySQL 5.7 is outside the official
+MySQL 8.0+ support range of Hibernate 6.6 and Connector/J 9. No driver or dialect
+override is applied.
+
+MySQL 8.0 automatic initialization currently fails on the pre-existing
+`GRANT ... IDENTIFIED BY` statements in all three MySQL schema scripts. Those
+account-provisioning statements need a separate follow-up before that path can
+work on MySQL 8.0. The migration deliberately leaves SQL and seed data unchanged
+and does not ignore initialization errors.
+
 ### Start a MySql database
 
 You may start a MySql database with docker:
@@ -95,12 +105,14 @@ or download and install the MySQL database (e.g., MySQL Community Server 5.7 GA)
 
 ### Use the Spring 'mysql' profile
 
-To use a MySQL database, you have to start 3 microservices (`visits-service`, `customers-service` and `vets-services`)
-with the `mysql` Spring profile. Add the `--spring.profiles.active=mysql` as programm argument.
+To use a MySQL database, start `customers-service`, then `visits-service` and
+`vets-service`, with the `mysql` Spring profile. Add
+`--spring.profiles.active=mysql` as a program argument.
 
 By default, at startup, database schema will be created and data will be populated.
 You may also manually create the PetClinic database and data by executing the `"db/mysql/{schema,data}.sql"` scripts of each 3 microservices. 
-In the `application.yml` of the [Configuration repository], set the `initialization-mode` to `never`.
+For a pre-provisioned database, use `--spring.sql.init.mode=never` as a local
+override. The external configuration repository is not changed by this migration.
 
 If you are running the microservices with Docker, you have to add the `mysql` profile into the (Dockerfile)[docker/Dockerfile]:
 ```
