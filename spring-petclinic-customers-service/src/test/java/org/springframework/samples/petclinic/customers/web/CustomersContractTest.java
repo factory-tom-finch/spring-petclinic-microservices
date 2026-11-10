@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
     "spring.cloud.config.enabled=false",
     "eureka.client.enabled=false",
     "spring.datasource.url=jdbc:hsqldb:mem:customers-contract",
-    "management.endpoints.web.exposure.include=health,metrics,loggers"
+    "management.endpoints.web.exposure.include=health,metrics,loggers,jolokia"
 })
 @ActiveProfiles("test")
 @Import(CustomersContractTest.MetricsConfiguration.class)
@@ -214,6 +214,37 @@ class CustomersContractTest {
     private double timerCount(String name, String method, String uri, String status, String exception) {
         return registry.find(name).tags("method", method, "uri", uri, "status", status, "exception", exception)
             .timers().stream().mapToLong(timer -> timer.count()).sum();
+    }
+
+    @Test
+    void countsEachSuccessfulWriteOnceWithCanonicalSlashTags() {
+        double ownerCreate = timerCount("petclinic.owner", "POST", "/owners", "201", "None");
+        double ownerUpdate = timerCount("petclinic.owner", "PUT", "/owners/{ownerId}", "204", "None");
+        double petCreate = timerCount("petclinic.pet", "POST", "/owners/{ownerId}/pets", "201", "None");
+        double petUpdate = timerCount("petclinic.pet", "PUT", "/owners/*/pets/{petId}", "204", "None");
+        request(HttpMethod.POST, "/owners/", OWNER, 201);
+        request(HttpMethod.PUT, "/owners/2/", OWNER, 204);
+        request(HttpMethod.POST, "/owners/2/pets/", petRequest(0, "TimerContract"), 201);
+        request(HttpMethod.PUT, "/owners/99999/pets/99999/", petRequest(2, "TimerContract"), 204);
+        assertThat(timerCount("petclinic.owner", "POST", "/owners", "201", "None")).isEqualTo(ownerCreate + 1);
+        assertThat(timerCount("petclinic.owner", "PUT", "/owners/{ownerId}", "204", "None")).isEqualTo(ownerUpdate + 1);
+        assertThat(timerCount("petclinic.pet", "POST", "/owners/{ownerId}/pets", "201", "None")).isEqualTo(petCreate + 1);
+        assertThat(timerCount("petclinic.pet", "PUT", "/owners/*/pets/{petId}", "204", "None")).isEqualTo(petUpdate + 1);
+    }
+
+    @Test
+    void retainsJolokiaAndActuatorLogLevelManagement() throws Exception {
+        ResponseEntity<String> jolokia = http.getForEntity("/actuator/jolokia/version", String.class);
+        assertThat(jolokia.getStatusCodeValue()).isEqualTo(200);
+        assertThat(body(jolokia).path("status").asInt()).isEqualTo(200);
+        assertThat(body(jolokia).path("value").path("agent").asText()).isNotEmpty();
+
+        String logger = "/actuator/loggers/org.springframework.samples.petclinic.customers.contract";
+        request(HttpMethod.POST, logger, "{\"configuredLevel\":\"DEBUG\"}", 204);
+        ResponseEntity<String> level = http.getForEntity(logger, String.class);
+        assertThat(level.getStatusCodeValue()).isEqualTo(200);
+        assertThat(body(level).path("configuredLevel").asText()).isEqualTo("DEBUG");
+        request(HttpMethod.POST, logger, "{\"configuredLevel\":null}", 204);
     }
 
     private String petRequest(int id, String name) {
