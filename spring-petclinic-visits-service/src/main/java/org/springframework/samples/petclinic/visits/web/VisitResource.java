@@ -16,8 +16,7 @@
 package org.springframework.samples.petclinic.visits.web;
 
 import java.util.List;
-import javax.validation.Valid;
-import javax.validation.constraints.Min;
+import jakarta.validation.Valid;
 
 import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
@@ -50,23 +49,24 @@ class VisitResource {
 
     private final VisitRepository visitRepository;
 
-    @PostMapping("owners/*/pets/{petId}/visits")
+    // Legacy MVC accepted nonpositive pet IDs; do not enable new method-level constraints.
+    @PostMapping({"owners/*/pets/{petId}/visits", "owners/*/pets/{petId}/visits/"})
     @ResponseStatus(HttpStatus.CREATED)
     public Visit create(
         @Valid @RequestBody Visit visit,
-        @PathVariable("petId") @Min(1) int petId) {
+        @PathVariable("petId") int petId) {
 
         visit.setPetId(petId);
         log.info("Saving visit {}", visit);
         return visitRepository.save(visit);
     }
 
-    @GetMapping("owners/*/pets/{petId}/visits")
-    public List<Visit> visits(@PathVariable("petId") @Min(1) int petId) {
+    @GetMapping({"owners/*/pets/{petId}/visits", "owners/*/pets/{petId}/visits/"})
+    public List<Visit> visits(@PathVariable("petId") int petId) {
         return visitRepository.findByPetId(petId);
     }
 
-    @GetMapping("pets/visits")
+    @GetMapping({"pets/visits", "pets/visits/"})
     public Visits visitsMultiGet(@RequestParam("petId") List<Integer> petIds) {
         final List<Visit> byPetIdIn = visitRepository.findByPetIdIn(petIds);
         return new Visits(byPetIdIn);
