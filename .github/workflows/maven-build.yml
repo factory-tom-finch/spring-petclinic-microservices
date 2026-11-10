@@ -16,11 +16,32 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up JDK 11
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '11'
-        distribution: 'adopt'
+        java-version: '21'
+        distribution: 'temurin'
         cache: maven
     - name: Build with Maven
-      run: mvn -B package --file pom.xml
+      run: mvn -B verify --file pom.xml
+    - name: Verify Maven wrapper
+      run: ./mvnw -B verify
+    - name: Verify executable and extracted jars
+      run: python3 scripts/verify_jars.py
+    - uses: actions/upload-artifact@v4
+      with:
+        name: service-jars
+        path: spring-petclinic-*/target/*.jar
+        retention-days: 3
+
+  containers:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        name: service-jars
+        path: .
+    - name: Verify Java 21 images and Compose launchers
+      run: sh scripts/verify_containers.sh

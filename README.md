@@ -9,6 +9,19 @@ and the Eureka Service Discovery from the [Spring Cloud Netflix](https://github.
 
 ## Starting services locally without Docker
 
+Build every service with JDK 21 and the Maven 3.9.9 wrapper:
+
+```bash
+./mvnw -B verify
+```
+
+The Java 21 / Spring Boot 3 migration temporarily uses a BOM-only parent build.
+Unchanged modules use Boot 2.7.18 and Cloud 2021.0.9. A migrated module selects
+Boot 3.5.16 and Cloud 2025.0.3 with the two properties documented in
+[the migration guide](docs/java21-migration.md). All modules share Java 21 build
+plugins and executable-jar packaging. The final cleanup restores the Boot 3
+starter parent and removes the temporary compatibility settings.
+
 Every microservice is a Spring Boot application and can be started locally using IDE ([Lombok](https://projectlombok.org/) plugin has to be set up) or `../mvnw spring-boot:run` command. Please note that supporting services (Config and Discovery Server) must be started before any other application (Customers, Vets, Visits and API).
 Startup of Tracing server, Admin server, Grafana and Prometheus is optional.
 If everything goes well, you can access the following services at given location:
@@ -33,7 +46,8 @@ After starting services, it takes a while for API Gateway to be in sync with ser
 so don't be scared of initial Spring Cloud Gateway timeouts. You can track services availability using Eureka dashboard
 available by default at http://localhost:8761.
 
-The `master` branch uses an  Alpine linux  with JRE 8 as Docker base. You will find a Java 11 version in the `release/java11` branch.
+The service images use an Alpine Linux Java 21 runtime. The existing dockerize
+binary supports amd64; other architectures are not currently supported by this Dockerfile.
 
 *NOTE: Under MacOSX or Windows, make sure that the Docker VM has enough memory to run the microservices. The default settings
 are usually not enough and make the `docker-compose up` painfully slow.*
