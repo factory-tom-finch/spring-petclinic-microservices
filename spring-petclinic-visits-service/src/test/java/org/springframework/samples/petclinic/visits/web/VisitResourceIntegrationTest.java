@@ -3,7 +3,7 @@ package org.springframework.samples.petclinic.visits.web;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Arrays;
-import javax.persistence.EntityManager;
+import jakarta.persistence.EntityManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.samples.petclinic.visits.model.Visit;
 import org.springframework.samples.petclinic.visits.model.VisitRepository;
 import org.springframework.test.context.ActiveProfiles;
@@ -51,11 +52,31 @@ class VisitResourceIntegrationTest {
     @Autowired
     EntityManager entityManager;
 
+    @Autowired
+    JdbcTemplate jdbc;
+
     @Test
     void shouldLoadUnchangedSchemaAndSeeds() throws Exception {
         assertThat(repository.count()).isEqualTo(4);
+        String[] seeds = {
+            "{\"id\":1,\"petId\":7,\"date\":\"2013-01-01\",\"description\":\"rabies shot\"}",
+            "{\"id\":2,\"petId\":8,\"date\":\"2013-01-02\",\"description\":\"rabies shot\"}",
+            "{\"id\":3,\"petId\":8,\"date\":\"2013-01-03\",\"description\":\"neutered\"}",
+            "{\"id\":4,\"petId\":7,\"date\":\"2013-01-04\",\"description\":\"spayed\"}"
+        };
+        for (String seed : seeds) {
+            JsonNode expected = mapper.readTree(seed);
+            Visit saved = repository.findById(expected.get("id").asInt()).orElseThrow(AssertionError::new);
+            assertThat(mapper.readTree(mapper.writeValueAsString(saved))).isEqualTo(expected);
+        }
         assertThat(repository.findByPetId(7)).extracting(Visit::getId).containsExactlyInAnyOrder(1, 4);
         assertThat(repository.findByPetIdIn(Arrays.asList(7, 8))).hasSize(4);
+        assertThat(jdbc.queryForObject("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            + "WHERE TABLE_NAME = 'VISITS' AND COLUMN_NAME = 'VISIT_DATE'", String.class))
+            .isEqualTo("DATE");
+        assertThat(jdbc.queryForObject("SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS "
+            + "WHERE TABLE_NAME = 'VISITS' AND COLUMN_NAME = 'DESCRIPTION'", Integer.class))
+            .isEqualTo(8192);
         mvc.perform(get("/owners/any-owner/pets/7/visits"))
             .andExpect(status().isOk())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -64,6 +85,13 @@ class VisitResourceIntegrationTest {
             .andExpect(jsonPath("$[*].date", containsInAnyOrder("2013-01-01", "2013-01-04")))
             .andExpect(jsonPath("$[*].description", containsInAnyOrder("rabies shot", "spayed")))
             .andExpect(jsonPath("$[*].petId", containsInAnyOrder(7, 7)));
+        mvc.perform(get("/owners/any-owner/pets/8/visits"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasSize(2)))
+            .andExpect(jsonPath("$[*].id", containsInAnyOrder(2, 3)))
+            .andExpect(jsonPath("$[*].date", containsInAnyOrder("2013-01-02", "2013-01-03")))
+            .andExpect(jsonPath("$[*].description", containsInAnyOrder("rabies shot", "neutered")))
+            .andExpect(jsonPath("$[*].petId", containsInAnyOrder(8, 8)));
     }
 
     @Test
